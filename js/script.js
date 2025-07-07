@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    form.addEventListener('submit', function(event) {
+    form.addEventListener('submit', async function(event) {
         event.preventDefault();
         
         // Verificar se o formulário é válido
@@ -145,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 email: dados.email,
                 whatsapp: dados.whatsapp,
                 profissao: dados.profession,
+                cpf: dados.cpf,
                 tipoImovel: dados.propertyType,
                 aluguelAtual: dados.currentRent,
                 rendaFamiliar: dados.familyIncome,
@@ -156,10 +157,21 @@ document.addEventListener('DOMContentLoaded', function() {
             consorcio: resultado.consorcio
         };
         
+        try {
+            // Salvar no banco local
+            if (window.localDB) {
+                await window.localDB.salvarSimulacao(dadosSimulacao);
+                console.log('Simulação salva no banco local');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar no banco:', error);
+            // Continuar mesmo se não conseguir salvar no banco
+        }
+        
         // Esconder loader
         esconderLoader();
         
-        // Armazenar dados
+        // Armazenar dados no localStorage para a página de resultados
         localStorage.setItem('simulacaoResultado', JSON.stringify(dadosSimulacao));
         
         // Redirecionar para a página de resultados

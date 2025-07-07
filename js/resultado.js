@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Configurar o botão de agendamento
     setupBotaoAgendamento();
+    
+    // Configurar botão de PDF
+    setupBotaoPDF();
 });
 
 function preencherResultados(dados) {
@@ -167,4 +170,80 @@ function setupBotaoAgendamento() {
             window.open(`https://wa.me/5519991946424?text=${mensagem}`, '_blank');
         });
     }
+}
+
+function setupBotaoPDF() {
+    // Adicionar botão de PDF na página de resultados
+    const acaoContainer = document.querySelector('.acao-container');
+    if (acaoContainer) {
+        const btnPDF = document.createElement('a');
+        btnPDF.href = '#';
+        btnPDF.className = 'btn-agendar';
+        btnPDF.style.backgroundColor = '#e74c3c';
+        btnPDF.innerHTML = '<i class="fas fa-file-pdf"></i> Gerar PDF';
+        
+        btnPDF.addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            const dadosArmazenados = localStorage.getItem('simulacaoResultado');
+            if (!dadosArmazenados) {
+                alert('Dados da simulação não encontrados');
+                return;
+            }
+            
+            try {
+                // Verificar se as bibliotecas estão carregadas
+                if (typeof window.jsPDF === 'undefined') {
+                    // Carregar jsPDF dinamicamente
+                    await carregarJsPDF();
+                }
+                
+                if (!window.pdfGenerator) {
+                    alert('Gerador de PDF não está disponível');
+                    return;
+                }
+                
+                const dados = JSON.parse(dadosArmazenados);
+                const sucesso = await window.pdfGenerator.gerarPDF(dados);
+                
+                if (!sucesso) {
+                    alert('Erro ao gerar PDF');
+                }
+                
+            } catch (error) {
+                console.error('Erro ao gerar PDF:', error);
+                alert('Erro ao gerar PDF. Verifique sua conexão com a internet.');
+            }
+        });
+        
+        // Inserir antes do botão de voltar
+        const btnVoltar = acaoContainer.querySelector('.btn-voltar');
+        if (btnVoltar) {
+            acaoContainer.insertBefore(btnPDF, btnVoltar);
+        } else {
+            acaoContainer.appendChild(btnPDF);
+        }
+    }
+}
+
+async function carregarJsPDF() {
+    return new Promise((resolve, reject) => {
+        if (typeof window.jsPDF !== 'undefined') {
+            resolve();
+            return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = () => {
+            // jsPDF carregado, agora carregar o gerador de PDF
+            const pdfScript = document.createElement('script');
+            pdfScript.src = 'js/pdf-generator.js';
+            pdfScript.onload = () => resolve();
+            pdfScript.onerror = () => reject(new Error('Erro ao carregar gerador de PDF'));
+            document.head.appendChild(pdfScript);
+        };
+        script.onerror = () => reject(new Error('Erro ao carregar jsPDF'));
+        document.head.appendChild(script);
+    });
 }
