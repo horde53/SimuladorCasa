@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("Script.js carregado - versão estática");
+    console.log("Script.js carregado - versão estática com PDF automático");
     
     const form = document.getElementById('simulador-form');
     
@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Mostrar loader
-        mostrarLoader('Calculando sua simulação...');
+        mostrarLoader('Calculando sua simulação e gerando PDF...');
         
         // Coletar dados do formulário
         const formData = new FormData(form);
@@ -163,9 +163,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 await window.localDB.salvarSimulacao(dadosSimulacao);
                 console.log('Simulação salva no banco local');
             }
+
+            // GERAR PDF AUTOMATICAMENTE
+            console.log('Gerando PDF automaticamente...');
+            mostrarLoader('Gerando PDF da simulação...');
+            
+            // Aguardar um pouco para garantir que o PDF generator está pronto
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            if (window.pdfGenerator) {
+                const resultadoPDF = await window.pdfGenerator.gerarPDF(dadosSimulacao, false); // false = não fazer download automático
+                
+                if (resultadoPDF.success) {
+                    console.log('PDF gerado e armazenado com sucesso:', resultadoPDF.filename);
+                    mostrarNotificacao('PDF gerado e salvo com sucesso!', 'success');
+                    
+                    // Armazenar informação do PDF no localStorage para a página de resultados
+                    localStorage.setItem('ultimoPDFGerado', JSON.stringify({
+                        filename: resultadoPDF.filename,
+                        gerado: true
+                    }));
+                } else {
+                    console.error('Erro ao gerar PDF:', resultadoPDF.error);
+                    mostrarNotificacao('Erro ao gerar PDF: ' + resultadoPDF.error, 'error');
+                }
+            } else {
+                console.error('PDF Generator não está disponível');
+                mostrarNotificacao('PDF Generator não está disponível', 'error');
+            }
+            
         } catch (error) {
-            console.error('Erro ao salvar no banco:', error);
-            // Continuar mesmo se não conseguir salvar no banco
+            console.error('Erro ao salvar no banco ou gerar PDF:', error);
+            mostrarNotificacao('Erro ao processar simulação: ' + error.message, 'error');
+            // Continuar mesmo se houver erro
         }
         
         // Esconder loader
@@ -437,4 +467,58 @@ function esconderLoader() {
     if (loader) {
         loader.style.display = 'none';
     }
+}
+
+// Função para mostrar notificações
+function mostrarNotificacao(mensagem, tipo = 'info') {
+    const notificacao = document.createElement('div');
+    notificacao.className = `notificacao notificacao-${tipo}`;
+    notificacao.innerHTML = `
+        <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+        <span>${mensagem}</span>
+    `;
+    
+    // Adicionar estilos se não existirem
+    if (!document.getElementById('notificacao-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notificacao-styles';
+        style.textContent = `
+            .notificacao {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                animation: slideInRight 0.3s ease;
+                max-width: 400px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            }
+            .notificacao-success { background-color: #27AE60; }
+            .notificacao-error { background-color: #e74c3c; }
+            .notificacao-info { background-color: #3498db; }
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(notificacao);
+    
+    // Remover após 5 segundos
+    setTimeout(() => {
+        notificacao.style.animation = 'slideInRight 0.3s ease reverse';
+        setTimeout(() => {
+            if (notificacao.parentNode) {
+                notificacao.parentNode.removeChild(notificacao);
+            }
+        }, 300);
+    }, 5000);
 }

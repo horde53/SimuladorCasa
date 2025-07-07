@@ -5,6 +5,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Aguardar inicialização do banco
     await window.localDB.init();
     
+    // Aguardar inicialização do storage de PDFs
+    if (window.pdfStorage) {
+        await window.pdfStorage.init();
+    }
+    
     // Carregar estatísticas
     await carregarEstatisticas();
     
@@ -20,9 +25,19 @@ async function carregarEstatisticas() {
         const stats = await window.localDB.obterEstatisticas();
         
         document.getElementById('total-simulacoes').textContent = stats.totalSimulacoes;
-        document.getElementById('total-leads').textContent = stats.totalLeads;
         document.getElementById('simulacoes-mes').textContent = stats.simulacoesUltimoMes;
         document.getElementById('valor-medio').textContent = formatarMoeda(stats.valorMedioImoveis);
+        
+        // Carregar estatísticas de PDFs
+        if (window.pdfStorage) {
+            try {
+                const pdfs = await window.pdfStorage.listarPDFs();
+                document.getElementById('total-pdfs').textContent = pdfs.length;
+            } catch (error) {
+                console.error('Erro ao carregar PDFs:', error);
+                document.getElementById('total-pdfs').textContent = '0';
+            }
+        }
         
         // Criar gráfico de tipos de imóveis
         criarGraficoTipos(stats.tiposImoveisPopulares);
@@ -205,10 +220,17 @@ async function gerarPDFSimulacao(id) {
             return;
         }
         
-        const sucesso = await window.pdfGenerator.gerarPDF(simulacao);
+        mostrarNotificacao('Gerando PDF...', 'info');
         
-        if (sucesso) {
+        const resultado = await window.pdfGenerator.gerarPDF(simulacao, true); // true = fazer download
+        
+        if (resultado.success) {
             mostrarNotificacao('PDF gerado com sucesso!', 'success');
+            
+            // Atualizar estatísticas
+            await carregarEstatisticas();
+        } else {
+            mostrarNotificacao('Erro ao gerar PDF: ' + resultado.error, 'error');
         }
         
     } catch (error) {
@@ -222,6 +244,122 @@ async function gerarPDFModal() {
     if (simulacaoId) {
         await gerarPDFSimulacao(parseInt(simulacaoId));
     }
+}
+
+async function gerenciarPDFs() {
+    try {
+        if (!window.pdfStorage) {
+            mostrarNotificacao('Storage de PDFs não está disponível', 'error');
+            return;
+        }
+        
+        const pdfs = await window.pdfStorage.listarPDFs();
+        
+        const modalBody = document.getElementById('modal-pdfs-content');
+        
+        if (pdfs.length === 0) {
+            modalBody.innerHTML = '<p class="no-data">Nenhum PDF armazenado</p>';
+        } else {
+            modalBody.innerHTML = `
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Cliente</th>
+                                <th>Email</th>
+                                <th>Valor Imóvel</th>
+                                <th>Arquivo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${pdfs.map(pdf => `
+                                <tr>
+                                    <td>${formatarData(pdf.dataGeracao)}</td>
+                                    <td>${pdf.clienteNome}</td>
+                                    <td>${pdf.clienteEmail}</td>
+                                    <td>${formatarMoeda(pdf.valorImovel)}</td>
+                                    <td>${pdf.filename}</td>
+                                    <td>
+                                        <button class="btn btn-primary btn-small" onclick="baixarPDFArmazenado(${pdf.id})">
+                                            <i class="fas fa-download"></i>
+                                            Baixar
+                                        </button>
+                                        <button class="btn btn-danger btn-small" onclick="excluirPDFArmazenado(${pdf.id})">
+                                            <i class="fas fa-trash"></i>
+                                            Excluir
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        
+        document.getElementById('modal-pdfs').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Erro ao carregar PDFs:', error);
+        mostrarNotificacao('Erro ao carregar PDFs armazenados', 'error');
+    }
+}
+
+async function baixarPDFArmazenado(id) {
+    try {
+        await window.pdfStorage.baixarPDF(id);
+        mostrarNotificacao('PDF baixado com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao baixar PDF:', error);
+        mostrarNotificacao('Erro ao baixar PDF', 'error');
+    }
+}
+
+async function excluirPDFArmazenado(id) {
+    if (confirm('Tem certeza que deseja excluir este PDF?')) {
+        try {
+            await window.pdfStorage.excluirPDF(id);
+            mostrarNotificacao('PDF excluído com sucesso!', 'success');
+            
+            // Recarregar lista de PDFs
+            await gerenciarPDFs();
+            
+            // Atualizar estatísticas
+            await carregarEstatisticas();
+            
+        } catch (error) {
+            console.error('Erro ao excluir PDF:', error);
+            mostrarNotificacao('Erro ao excluir PDF', 'error');
+        }
+    }
+}
+
+async function confirmarLimpezaPDFs() {
+    if (confirm('ATENÇÃO: Esta ação irá apagar TODOS os PDFs armazenados. Esta ação não pode ser desfeita. Deseja continuar?')) {
+        try {
+            const pdfs = await window.pdfStorage.listarPDFs();
+            
+            for (const pdf of pdfs) {
+                await window.pdfStorage.excluirPDF(pdf.id);
+            }
+            
+            mostrarNotificacao('Todos os PDFs foram excluídos com sucesso!', 'success');
+            
+            // Fechar modal e atualizar
+            fecharModalPDFs();
+            await carregarEstatisticas();
+            
+        } catch (error) {
+            console.error('Erro ao limpar PDFs:', error);
+            mostrarNotificacao('Erro ao limpar PDFs', 'error');
+        }
+    }
+}
+
+function fecharModalPDFs() {
+    document.getElementById('modal-pdfs').style.display = 'none';
 }
 
 async function exportarDados() {
@@ -275,8 +413,13 @@ function configurarEventos() {
     // Fechar modal ao clicar fora
     window.onclick = function(event) {
         const modal = document.getElementById('modal-detalhes');
+        const modalPDFs = document.getElementById('modal-pdfs');
+        
         if (event.target === modal) {
             fecharModal();
+        }
+        if (event.target === modalPDFs) {
+            fecharModalPDFs();
         }
     };
     

@@ -14,6 +14,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const dados = JSON.parse(dadosArmazenados);
         console.log('Dados do localStorage parseados:', dados);
         preencherResultados(dados);
+        
+        // Verificar se há PDF gerado
+        verificarPDFGerado();
+        
     } catch (error) {
         console.error('Erro ao parsear dados do localStorage:', error);
         window.location.href = 'index.html';
@@ -25,6 +29,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Configurar botão de PDF
     setupBotaoPDF();
 });
+
+function verificarPDFGerado() {
+    const ultimoPDF = localStorage.getItem('ultimoPDFGerado');
+    if (ultimoPDF) {
+        try {
+            const pdfInfo = JSON.parse(ultimoPDF);
+            if (pdfInfo.gerado) {
+                mostrarNotificacao(`PDF "${pdfInfo.filename}" foi gerado e salvo automaticamente!`, 'success');
+                
+                // Limpar a informação após mostrar
+                localStorage.removeItem('ultimoPDFGerado');
+            }
+        } catch (error) {
+            console.error('Erro ao verificar PDF gerado:', error);
+        }
+    }
+}
 
 function preencherResultados(dados) {
     try {
@@ -180,7 +201,7 @@ function setupBotaoPDF() {
         btnPDF.href = '#';
         btnPDF.className = 'btn-agendar';
         btnPDF.style.backgroundColor = '#e74c3c';
-        btnPDF.innerHTML = '<i class="fas fa-file-pdf"></i> Gerar PDF';
+        btnPDF.innerHTML = '<i class="fas fa-file-pdf"></i> Baixar PDF';
         
         btnPDF.addEventListener('click', async function(e) {
             e.preventDefault();
@@ -192,27 +213,34 @@ function setupBotaoPDF() {
             }
             
             try {
+                mostrarLoader('Gerando PDF...');
+                
                 // Verificar se as bibliotecas estão carregadas
                 if (typeof window.jsPDF === 'undefined') {
-                    // Carregar jsPDF dinamicamente
                     await carregarJsPDF();
                 }
                 
                 if (!window.pdfGenerator) {
                     alert('Gerador de PDF não está disponível');
+                    esconderLoader();
                     return;
                 }
                 
                 const dados = JSON.parse(dadosArmazenados);
-                const sucesso = await window.pdfGenerator.gerarPDF(dados);
+                const resultado = await window.pdfGenerator.gerarPDF(dados, true); // true = fazer download
                 
-                if (!sucesso) {
-                    alert('Erro ao gerar PDF');
+                esconderLoader();
+                
+                if (resultado.success) {
+                    mostrarNotificacao('PDF gerado e baixado com sucesso!', 'success');
+                } else {
+                    mostrarNotificacao('Erro ao gerar PDF: ' + resultado.error, 'error');
                 }
                 
             } catch (error) {
                 console.error('Erro ao gerar PDF:', error);
-                alert('Erro ao gerar PDF. Verifique sua conexão com a internet.');
+                esconderLoader();
+                mostrarNotificacao('Erro ao gerar PDF. Tente novamente.', 'error');
             }
         });
         
@@ -246,4 +274,129 @@ async function carregarJsPDF() {
         script.onerror = () => reject(new Error('Erro ao carregar jsPDF'));
         document.head.appendChild(script);
     });
+}
+
+// Função para mostrar o loader
+function mostrarLoader(mensagem) {
+    let loader = document.getElementById('simulacao-loader');
+    
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'simulacao-loader';
+        loader.className = 'simulacao-loader';
+        loader.innerHTML = `
+            <div class="loader-spinner"></div>
+            <div class="loader-mensagem">${mensagem || 'Carregando...'}</div>
+        `;
+        document.body.appendChild(loader);
+        
+        if (!document.getElementById('loader-style')) {
+            const style = document.createElement('style');
+            style.id = 'loader-style';
+            style.textContent = `
+                .simulacao-loader {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    color: white;
+                }
+                .loader-spinner {
+                    border: 5px solid #f3f3f3;
+                    border-top: 5px solid #3498db;
+                    border-radius: 50%;
+                    width: 50px;
+                    height: 50px;
+                    animation: spin 2s linear infinite;
+                    margin-bottom: 15px;
+                }
+                .loader-mensagem {
+                    font-size: 18px;
+                    text-align: center;
+                    max-width: 80%;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    } else {
+        const mensagemElement = loader.querySelector('.loader-mensagem');
+        if (mensagemElement && mensagem) {
+            mensagemElement.textContent = mensagem;
+        }
+    }
+    
+    loader.style.display = 'flex';
+}
+
+// Função para esconder o loader
+function esconderLoader() {
+    const loader = document.getElementById('simulacao-loader');
+    if (loader) {
+        loader.style.display = 'none';
+    }
+}
+
+// Função para mostrar notificações
+function mostrarNotificacao(mensagem, tipo = 'info') {
+    const notificacao = document.createElement('div');
+    notificacao.className = `notificacao notificacao-${tipo}`;
+    notificacao.innerHTML = `
+        <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+        <span>${mensagem}</span>
+    `;
+    
+    // Adicionar estilos se não existirem
+    if (!document.getElementById('notificacao-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notificacao-styles';
+        style.textContent = `
+            .notificacao {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                animation: slideInRight 0.3s ease;
+                max-width: 400px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            }
+            .notificacao-success { background-color: #27AE60; }
+            .notificacao-error { background-color: #e74c3c; }
+            .notificacao-info { background-color: #3498db; }
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(notificacao);
+    
+    // Remover após 5 segundos
+    setTimeout(() => {
+        notificacao.style.animation = 'slideInRight 0.3s ease reverse';
+        setTimeout(() => {
+            if (notificacao.parentNode) {
+                notificacao.parentNode.removeChild(notificacao);
+            }
+        }, 300);
+    }, 5000);
 }
