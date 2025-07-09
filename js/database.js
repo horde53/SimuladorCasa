@@ -1,4 +1,5 @@
 // Database usando IndexedDB para armazenamento local
+// Enhanced with Supabase integration
 class LocalDatabase {
     constructor() {
         this.dbName = 'CasaProgramadaDB';
@@ -57,6 +58,33 @@ class LocalDatabase {
 
     async salvarSimulacao(dados) {
         try {
+            // Try to save to Supabase first
+            if (window.isSupabaseAvailable && window.isSupabaseAvailable()) {
+                console.log('Saving to Supabase...');
+                const supabaseResult = await window.supabaseClient.salvarSimulacao(dados);
+                
+                if (supabaseResult.success) {
+                    console.log('✅ Saved to Supabase successfully');
+                    // Also save to local storage as backup
+                    await this.salvarLocal(dados);
+                    return supabaseResult.data.id;
+                } else {
+                    console.warn('⚠️ Supabase save failed, using local storage:', supabaseResult.error);
+                }
+            }
+            
+            // Fallback to local storage
+            return await this.salvarLocal(dados);
+            
+        } catch (error) {
+            console.error('Error in salvarSimulacao:', error);
+            // Fallback to local storage
+            return await this.salvarLocal(dados);
+        }
+    }
+
+    async salvarLocal(dados) {
+        try {
             if (!this.db) {
                 await this.init();
             }
@@ -91,6 +119,30 @@ class LocalDatabase {
     }
 
     async buscarSimulacoes(filtros = {}) {
+        try {
+            // Try Supabase first
+            if (window.isSupabaseAvailable && window.isSupabaseAvailable()) {
+                console.log('Fetching from Supabase...');
+                const supabaseResult = await window.supabaseClient.buscarSimulacoes(filtros);
+                
+                if (supabaseResult.success) {
+                    console.log('✅ Fetched from Supabase successfully');
+                    return this.formatSupabaseData(supabaseResult.data);
+                } else {
+                    console.warn('⚠️ Supabase fetch failed, using local storage:', supabaseResult.error);
+                }
+            }
+            
+            // Fallback to local storage
+            return await this.buscarLocal(filtros);
+            
+        } catch (error) {
+            console.error('Error in buscarSimulacoes:', error);
+            return await this.buscarLocal(filtros);
+        }
+    }
+
+    async buscarLocal(filtros = {}) {
         try {
             if (!this.db) {
                 await this.init();
@@ -183,6 +235,20 @@ class LocalDatabase {
 
     async exportarDados() {
         try {
+            // Try Supabase first
+            if (window.isSupabaseAvailable && window.isSupabaseAvailable()) {
+                console.log('Exporting from Supabase...');
+                const supabaseResult = await window.supabaseClient.exportarDados();
+                
+                if (supabaseResult.success) {
+                    console.log('✅ Exported from Supabase successfully');
+                    return supabaseResult.data;
+                } else {
+                    console.warn('⚠️ Supabase export failed, using local storage:', supabaseResult.error);
+                }
+            }
+            
+            // Fallback to local storage
             const simulacoes = await this.buscarSimulacoes();
             const leads = await this.buscarLeads();
             
@@ -253,6 +319,30 @@ class LocalDatabase {
 
     async obterEstatisticas() {
         try {
+            // Try Supabase first
+            if (window.isSupabaseAvailable && window.isSupabaseAvailable()) {
+                console.log('Getting statistics from Supabase...');
+                const supabaseResult = await window.supabaseClient.obterEstatisticas();
+                
+                if (supabaseResult.success) {
+                    console.log('✅ Statistics from Supabase successfully');
+                    return supabaseResult.data;
+                } else {
+                    console.warn('⚠️ Supabase statistics failed, using local storage:', supabaseResult.error);
+                }
+            }
+            
+            // Fallback to local storage
+            return await this.obterEstatisticasLocal();
+            
+        } catch (error) {
+            console.error('Error in obterEstatisticas:', error);
+            return await this.obterEstatisticasLocal();
+        }
+    }
+
+    async obterEstatisticasLocal() {
+        try {
             const simulacoes = await this.buscarSimulacoes();
             const leads = await this.buscarLeads();
             
@@ -313,6 +403,19 @@ class LocalDatabase {
 
     async limparDados() {
         try {
+            // Clear from Supabase if available
+            if (window.isSupabaseAvailable && window.isSupabaseAvailable()) {
+                console.log('Clearing Supabase data...');
+                const supabaseResult = await window.supabaseClient.limparDados();
+                
+                if (supabaseResult.success) {
+                    console.log('✅ Supabase data cleared successfully');
+                } else {
+                    console.warn('⚠️ Supabase clear failed:', supabaseResult.error);
+                }
+            }
+            
+            // Also clear local storage
             if (!this.db) {
                 await this.init();
             }
@@ -338,6 +441,46 @@ class LocalDatabase {
             console.error('Erro ao limpar dados:', error);
             throw error;
         }
+    }
+
+    // Format Supabase data to match local format
+    formatSupabaseData(supabaseData) {
+        return supabaseData.map(item => ({
+            id: item.id,
+            dataSimulacao: item.data_simulacao,
+            ip: item.ip_address,
+            userAgent: item.user_agent,
+            cliente: {
+                nome: item.cliente_nome,
+                email: item.cliente_email,
+                whatsapp: item.cliente_whatsapp,
+                profissao: item.cliente_profissao,
+                cpf: item.cliente_cpf,
+                endereco: item.cliente_endereco,
+                numero: item.cliente_numero,
+                cep: item.cliente_cep,
+                tipoImovel: item.tipo_imovel,
+                valorImovel: item.valor_imovel,
+                entrada: item.entrada,
+                fgts: item.fgts,
+                rendaFamiliar: item.renda_familiar,
+                aluguelAtual: item.aluguel_atual
+            },
+            financiamento: {
+                credito: item.fin_credito,
+                parcelas: item.fin_parcelas,
+                valorParcela: item.fin_valor_parcela,
+                total: item.fin_total,
+                taxaAnual: item.fin_taxa_anual
+            },
+            consorcio: {
+                credito: item.cons_credito,
+                parcelas: item.cons_parcelas,
+                valorParcela: item.cons_valor_parcela,
+                total: item.cons_total,
+                taxaAdm: item.cons_taxa_adm
+            }
+        }));
     }
 }
 
